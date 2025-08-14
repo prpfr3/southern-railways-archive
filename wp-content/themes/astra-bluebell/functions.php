@@ -205,56 +205,100 @@ function my_enqueue_open_links_new_tab_script() {
 
 add_action( 'wp_enqueue_scripts', 'my_enqueue_open_links_new_tab_script' );
 
-add_filter( 'woocommerce_package_rates', function( $rates, $package ) {
-    // Debug start
-    error_log("\n--- Shipping Rates Filter Start ---");
+// add_filter( 'woocommerce_package_rates', function( $rates, $package ) {
+//     // Debug start
+//     error_log("\n--- Shipping Rates Filter Start ---");
 
-    // Count total items in cart
-    $cart_quantity = WC()->cart->get_cart_contents_count();
-    error_log("Cart quantity: $cart_quantity");
+//     // Count total items in cart
+//     $cart_quantity = WC()->cart->get_cart_contents_count();
+//     error_log("Cart quantity: $cart_quantity");
 
-    // Check if order meets minimum quantity requirement
-    if ( $cart_quantity < 6 ) {
-        error_log("Minimum order size not met (needs 6, has $cart_quantity).");
-        return $rates; // Don't change shipping
-    } else {
-        error_log("Minimum order size met.");
-    }
+//     // Check if order meets minimum quantity requirement
+//     if ( $cart_quantity < 6 ) {
+//         error_log("Minimum order size not met (needs 6, has $cart_quantity).");
+//         return $rates; // Don't change shipping
+//     } else {
+//         error_log("Minimum order size met.");
+//     }
 
-    // Assume product is physical unless proven otherwise
-    $is_physical = false;
+//     // Assume product is physical unless proven otherwise
+//     $is_physical = false;
 
-    // Loop through cart items
-    foreach ( WC()->cart->get_cart() as $cart_item ) {
+//     // Loop through cart items
+//     foreach ( WC()->cart->get_cart() as $cart_item ) {
+//         $product = $cart_item['data'];
+
+//         // Log product details
+//         error_log("Checking product: " . $product->get_name());
+//         error_log("  Virtual? " . ($product->is_virtual() ? 'Yes' : 'No'));
+//         error_log("  Downloadable? " . ($product->is_downloadable() ? 'Yes' : 'No'));
+
+//         // If not virtual, we have a physical product
+//         if ( ! $product->is_virtual() ) {
+//             $is_physical = true;
+//             error_log("  → Found a physical product.");
+//             break;
+//         }
+//     }
+
+//     // If all products are digital, force free shipping
+//     if ( ! $is_physical ) {
+//         error_log("All products are digital → Forcing free shipping.");
+//         foreach ( $rates as $rate_id => $rate ) {
+//             if ( 'free_shipping' === $rate->method_id ) {
+//                 $rates = array( $rate_id => $rate );
+//                 break;
+//             }
+//         }
+//     } else {
+//         error_log("Order contains physical items → normal shipping applies.");
+//     }
+
+//     error_log("--- Shipping Rates Filter End ---\n");
+
+//     return $rates;
+// }, 10, 2 );
+
+
+add_action( 'woocommerce_checkout_process', 'pf_minimum_physical_order_total' );
+
+function pf_minimum_physical_order_total() {
+    $minimum_amount = 6.00;
+    $physical_total = 0.0;
+
+    error_log("=== Minimum physical order check start ===");
+
+    foreach ( WC()->cart->get_cart() as $cart_item_key => $cart_item ) {
         $product = $cart_item['data'];
 
-        // Log product details
-        error_log("Checking product: " . $product->get_name());
-        error_log("  Virtual? " . ($product->is_virtual() ? 'Yes' : 'No'));
-        error_log("  Downloadable? " . ($product->is_downloadable() ? 'Yes' : 'No'));
+        // Debug product info
+        error_log("Product: " . $product->get_name());
+        error_log("  is_virtual: " . ($product->is_virtual() ? 'true' : 'false'));
+        error_log("  is_downloadable: " . ($product->is_downloadable() ? 'true' : 'false'));
 
-        // If not virtual, we have a physical product
-        if ( ! $product->is_virtual() ) {
-            $is_physical = true;
-            error_log("  → Found a physical product.");
-            break;
+        // Count only physical products towards the minimum total
+        if ( ! $product->is_virtual() && ! $product->is_downloadable() ) {
+            $line_total = $cart_item['line_total'];
+            $physical_total += $line_total;
+            error_log("  Counted towards physical total: £" . $line_total);
+        } else {
+            error_log("  Skipped (digital item)");
         }
     }
 
-    // If all products are digital, force free shipping
-    if ( ! $is_physical ) {
-        error_log("All products are digital → Forcing free shipping.");
-        foreach ( $rates as $rate_id => $rate ) {
-            if ( 'free_shipping' === $rate->method_id ) {
-                $rates = array( $rate_id => $rate );
-                break;
-            }
-        }
-    } else {
-        error_log("Order contains physical items → normal shipping applies.");
+    error_log("Physical total: £" . $physical_total);
+
+    if ( $physical_total > 0 && $physical_total < $minimum_amount ) {
+        // Add WooCommerce error notice to block checkout
+        wc_add_notice(
+            sprintf(
+                "The minimum order amount for physical items is £%s. Your current total for physical items is £%s.",
+                number_format( $minimum_amount, 2 ),
+                number_format( $physical_total, 2 )
+            ),
+            'error'
+        );
     }
 
-    error_log("--- Shipping Rates Filter End ---\n");
-
-    return $rates;
-}, 10, 2 );
+    error_log("=== Minimum physical order check end ===");
+}
