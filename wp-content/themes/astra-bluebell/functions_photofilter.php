@@ -53,55 +53,56 @@ function filter_product_title_only( $search, $query ) {
 }
 
 function acf_multi_field_filter_query( $query ) {
-    if ( is_admin() || ! $query->is_main_query() || !( is_shop() || is_product_category() || is_product_tag() ) ) {
+    if ( is_admin() || ! $query->is_main_query() ) {
         return;
     }
 
-    $fields = ['location', 'date', 'number', 'name', 'class']; // 'photographer' removed
-    $meta_query = [];
+    // Only run filter on Photos category archive
+    if ( is_product_category( 'photos' ) ) {
 
-    // Add ACF field filters (except photographer)
-    foreach ( $fields as $field ) {
-        if ( isset( $_GET[$field] ) && $_GET[$field] !== '' ) {
-            $meta_query[] = array(
-                'key'     => $field,
-                'value'   => sanitize_text_field( $_GET[$field] ),
-                'compare' => 'LIKE'
-            );
-        }
-    }
+        $fields = ['location', 'date', 'number', 'name', 'class']; 
+        $meta_query = [];
 
-    if ( ! empty( $meta_query ) ) {
-        $query->set( 'meta_query', $meta_query );
-    }
-
-    // Add photographer taxonomy filter
-    if ( isset( $_GET['photographer'] ) && $_GET['photographer'] !== '' ) {
-        $tax_query = [
-            [
-                'taxonomy' => 'photographer',
-                'field'    => 'slug',
-                'terms'    => sanitize_text_field( $_GET['photographer'] ),
-            ]
-        ];
-
-        // Merge if other tax_query already exists
-        $existing_tax_query = $query->get( 'tax_query' );
-        if ( $existing_tax_query ) {
-            $tax_query = array_merge( $existing_tax_query, $tax_query );
+        foreach ( $fields as $field ) {
+            if ( isset( $_GET[$field] ) && $_GET[$field] !== '' ) {
+                $meta_query[] = [
+                    'key'     => $field,
+                    'value'   => sanitize_text_field( $_GET[$field] ),
+                    'compare' => 'LIKE'
+                ];
+            }
         }
 
-        $query->set( 'tax_query', $tax_query );
-    }
+        if ( ! empty( $meta_query ) ) {
+            $query->set( 'meta_query', $meta_query );
+        }
 
-    // Handle title search
-    if ( isset( $_GET['title'] ) && $_GET['title'] !== '' ) {
-        $query->set( 's', sanitize_text_field( $_GET['title'] ) );
-        $query->set( 'search_fields', array( 'post_title' ) );
-        add_filter( 'posts_search', 'filter_product_title_only', 10, 2 );
+        if ( isset( $_GET['photographer'] ) && $_GET['photographer'] !== '' ) {
+            $tax_query = [
+                [
+                    'taxonomy' => 'photographer',
+                    'field'    => 'slug',
+                    'terms'    => sanitize_text_field( $_GET['photographer'] ),
+                ]
+            ];
+
+            $existing_tax_query = $query->get( 'tax_query' );
+            if ( $existing_tax_query ) {
+                $tax_query = array_merge( $existing_tax_query, $tax_query );
+            }
+
+            $query->set( 'tax_query', $tax_query );
+        }
+
+        if ( isset( $_GET['title'] ) && $_GET['title'] !== '' ) {
+            $query->set( 's', sanitize_text_field( $_GET['title'] ) );
+            $query->set( 'search_fields', ['post_title'] );
+            add_filter( 'posts_search', 'filter_product_title_only', 10, 2 );
+        }
     }
 }
 add_action( 'pre_get_posts', 'acf_multi_field_filter_query' );
+
 
 class ACF_Filter_Widget extends WP_Widget {
     public function __construct() {
@@ -113,9 +114,15 @@ class ACF_Filter_Widget extends WP_Widget {
     }
 
     public function widget($args, $instance) {
+
+        // Only show widget on Photos category
+        if ( ! is_product_category( 'photos' ) ) {
+            return;
+        }
+
         echo $args['before_widget'];
         ?>
-        <form method="get" action="<?php echo esc_url( wc_get_page_permalink( 'shop' ) ); ?>">
+            <form method="get" action="<?php echo esc_url( get_term_link( 'photos', 'product_cat' ) ); ?>">
             <?php
             $fields = ['title', 'location', 'date', 'number', 'name', 'class'];
             foreach ( $fields as $field ) {
@@ -166,6 +173,21 @@ function register_acf_filter_widget() {
     register_widget('ACF_Filter_Widget');
 }
 add_action('widgets_init', 'register_acf_filter_widget');
+
+add_filter( 'astra_page_layout', function( $layout ) {
+    // Only on Photos category page → show sidebar
+    if ( is_product_category( 'photos' ) ) {
+        return 'left-sidebar'; // or 'right-sidebar', depending on your Astra settings
+    }
+
+    // Everywhere else → full width (no sidebar)
+    if ( is_shop() || is_product_category() || is_product_tag() ) {
+        return 'no-sidebar';
+    }
+
+    return $layout;
+});
+
 
 function register_photographer_taxonomy() {
     register_taxonomy(
