@@ -52,6 +52,95 @@ function filter_product_title_only( $search, $query ) {
     return $search;
 }
 
+
+// 1️⃣ Register the widget
+class Document_Filter_Widget extends WP_Widget {
+    public function __construct() {
+        parent::__construct(
+            'document_filter_widget',
+            __('Document Filter', 'your-theme'),
+            ['description' => __('Filter documents by Title, Year, Region', 'your-theme')]
+        );
+    }
+
+    public function widget($args, $instance) {
+        // Only show on Documents category
+        if ( ! is_product_category('documents') ) return;
+
+        echo $args['before_widget'];
+        ?>
+        <form method="get" action="<?php echo esc_url( get_term_link( 'documents', 'product_cat' ) ); ?>">
+            <?php
+            $fields = [
+                'title'  => 'Title',
+                'year'   => 'Year',
+                'region' => 'Region'
+            ];
+
+            foreach ( $fields as $param => $label ) {
+                $value = isset($_GET[$param]) ? esc_attr($_GET[$param]) : '';
+                ?>
+                <p>
+                    <label for="<?php echo $param; ?>"><?php echo $label; ?>:</label><br>
+                    <input type="text" name="<?php echo $param; ?>" id="<?php echo $param; ?>" 
+                           value="<?php echo $value; ?>" placeholder=" " style="width:100%;">
+                </p>
+            <?php } ?>
+
+            <p style="display: flex; gap: 10px;">
+              <button type="submit">Search</button>
+          	</p>
+            <p style="display: flex; gap: 10px;">
+                <button type="button" onclick="window.location.href='<?php echo esc_url( get_term_link( 'documents', 'product_cat' ) ); ?>
+';">Reset All</button>
+            </p>
+
+        </form>
+        <?php
+        echo $args['after_widget'];
+    }
+}
+
+// Register widget
+add_action('widgets_init', function() {
+    register_widget('Document_Filter_Widget');
+});
+
+// 2️⃣ Filter query based on form input
+add_action('pre_get_posts', function($query) {
+    if ( is_admin() || ! $query->is_main_query() ) return;
+
+    if ( is_product_category('documents') ) {
+        $meta_query = [];
+
+        if ( !empty($_GET['year']) ) {
+            $meta_query[] = [
+                'key' => 'document_year',
+                'value' => sanitize_text_field($_GET['year']),
+                'compare' => 'LIKE',
+            ];
+        }
+
+        if ( !empty($_GET['region']) ) {
+            $meta_query[] = [
+                'key' => 'document_region',
+                'value' => sanitize_text_field($_GET['region']),
+                'compare' => 'LIKE',
+            ];
+        }
+
+        if ( !empty($_GET['title']) ) {
+            $query->set('s', sanitize_text_field($_GET['title']));
+        }
+
+        if ( !empty($meta_query) ) {
+            $query->set('meta_query', $meta_query);
+        }
+    }
+});
+
+
+
 function acf_multi_field_filter_query( $query ) {
     if ( is_admin() || ! $query->is_main_query() ) {
         return;
@@ -196,9 +285,14 @@ add_action( 'after_setup_theme', function() {
 
 add_filter( 'astra_page_layout', function( $layout ) {
 
-    // Photos category → force sidebar
+    // Photos category → left sidebar
     if ( is_product_category( 'photos' ) ) {
-        return 'left-sidebar'; 
+        return 'left-sidebar';
+    }
+
+    // Documents category → left sidebar
+    if ( is_product_category( 'documents' ) ) {
+        return 'left-sidebar';
     }
 
     // All other WooCommerce archives → no sidebar
